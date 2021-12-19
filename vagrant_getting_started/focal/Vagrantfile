@@ -1,0 +1,72 @@
+$script_mysql = <<-SCRIPT
+  apt-get update && \
+  apt-get install -y mysql-server && \
+  mysql -e "create user 'phpuser'@'%' identified by 'pass';"
+  SCRIPT
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/focal64"
+
+  # config.vm.define "mysql_db" do |mysql|
+  #   mysql.vm.network "public_network", ip: "192.168.1.24"
+    
+  #   mysql.vm.provision "shell", inline: "cat /configs/id_rsa.pub >> .ssh/authorized_keys"
+  #   mysql.vm.provision "shell", inline: $script_mysql
+  #   mysql.vm.provision "shell", inline: "cat /configs/mysqld.cnf > /etc/mysql/mysql.conf.d/mysqld.cnf"
+  #   mysql.vm.provision "shell", inline: "service mysql restart"
+    
+  #   mysql.vm.synced_folder "./configs", "/configs"
+  #   mysql.vm.synced_folder ".", "/vagrant", disabled: true
+  # end 
+
+  config.vm.define "phpweb" do |phpweb|
+    phpweb.vm.network "forwarded_port", guest: 80, host: 8080
+    phpweb.vm.network "public_network", ip: "192.168.1.25", bridge: "Intel(R) Ethernet Connection (7) I219-V"
+
+    phpweb.vm.provider "virtualbox" do |virtualbox|
+      virtualbox.memory = 1024
+      virtualbox.cpus = 2
+      virtualbox.name = "ubuntu_focal_php"
+    end
+
+    phpweb.vm.provision "shell", 
+      inline: "apt-get update && apt-get install -y puppet"
+
+    phpweb.vm.provision "puppet" do |puppet|
+    puppet.manifests_path = "./configs/manifest"
+    puppet.manifest_file = "phpweb.pp"
+    end
+  end
+
+  config.vm.define "mysqlserver" do |mysqlserver|
+    mysqlserver.vm.network "public_network", ip: "192.168.1.23", bridge: "Intel(R) Ethernet Connection (7) I219-V"
+
+    mysqlserver.vm.provider "virtualbox" do |virtualbox|
+      virtualbox.memory = 1024
+      virtualbox.cpus = 2
+      virtualbox.name = "ubuntu_focal_MYSQLSERVER"
+    end
+
+    mysqlserver.vm.provision "shell", 
+      inline: "cat /vagrant/configs/id_rsa.pub >> .ssh/authorized_keys"
+  end
+
+  config.vm.define "ansible" do |ansible|
+    ansible.vm.network "public_network", ip: "192.168.1.26", bridge: "Intel(R) Ethernet Connection (7) I219-V"
+
+    ansible.vm.provider "virtualbox" do |virtualbox|
+      virtualbox.memory = 1024
+      virtualbox.cpus = 2
+      virtualbox.name = "ubuntu_focal_ANSIBLE"
+    end
+    
+    ansible.vm.provision "shell", inline: "cp /vagrant/id_rsa /home/vagrant && chmod 600 /home/vagrant/id_rsa && chown vagrant:vagrant /home/vagrant/id_rsa"
+    
+    ansible.vm.provision "shell", 
+      inline: "apt-get update && sudo apt-get install -y ansible"
+
+    ansible.vm.provision "shell", 
+      inline: "ansible-playbook -i /vagrant/configs/ansible/hosts /vagrant/configs/ansible/playbook.yml"
+  end
+    
+end
